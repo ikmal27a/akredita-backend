@@ -1,0 +1,204 @@
+// Prisma schema — definisikan database schema untuk Akredita
+// Run: npx prisma migrate dev --name init   untuk membuat tabel
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  KOORDINATOR
+  PIC_KRITERIA
+  REVIEWER
+  ASESOR
+  PIMPINAN
+}
+
+enum DocStatus {
+  DRAFT
+  REVIEW
+  CHANGES
+  VERIFIED
+  ARCHIVED
+}
+
+enum ReviewStatus {
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum CommentType {
+  NOTE
+  CHANGE_REQUEST
+  APPROVAL
+}
+
+enum ActivityType {
+  UPLOAD
+  EDIT
+  APPROVE
+  REQUEST_CHANGES
+  COMMENT
+  SUBMIT
+  AI_DRAFT
+}
+
+model User {
+  id            String      @id @default(cuid())
+  email         String      @unique
+  passwordHash  String
+  fullName      String
+  role          Role        @default(PIC_KRITERIA)
+  program       Program?    @relation(fields: [programId], references: [id])
+  programId     String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  // Relations
+  uploadedDocs  Document[]  @relation("uploader")
+  reviewsAssigned Review[]  @relation("reviewer")
+  comments      Comment[]
+  activities    Activity[]
+  ledDrafts     LedDraft[]
+}
+
+model Program {
+  id            String      @id @default(cuid())
+  name          String      // "Teknik Informatika"
+  faculty       String      // "Fakultas Teknologi Informasi"
+  level         String      // "Sarjana (S1)"
+  university    String      // "Universitas Nusantara"
+  accreditation String?     // "B"
+  expiry        DateTime?
+  reviewer      String?     // "LAM Infokom"
+  createdAt     DateTime    @default(now())
+  // Relations
+  users         User[]
+  documents     Document[]
+  ledDrafts     LedDraft[]
+  deadlines     Deadline[]
+  activities    Activity[]
+}
+
+// 9 kriteria akreditasi BAN-PT / LAM — seed-only, jarang berubah
+model Criterion {
+  id            String      @id // "K1"-"K9"
+  title         String      // "Visi, Misi, Tujuan, dan Strategi"
+  short         String      // "VMTS"
+  totalRequired Int         // 14
+  ownerRole     String?     // "Tim Mutu"
+  sortOrder     Int
+  // Relations
+  documents     Document[]
+  ledDrafts     LedDraft[]
+  deadlines     Deadline[]
+}
+
+model Document {
+  id            String      @id @default(cuid())
+  name          String
+  filePath      String      // path di S3 atau local disk
+  fileType      String      // "pdf", "xls", "zip", "doc"
+  fileSize      Int         // bytes
+  status        DocStatus   @default(REVIEW)
+  version       Int         @default(1)
+  parentVersion String?     // pointer ke versi sebelumnya jika revisi
+  // Relations
+  program       Program     @relation(fields: [programId], references: [id])
+  programId     String
+  criterion     Criterion   @relation(fields: [criterionId], references: [id])
+  criterionId   String
+  uploader      User        @relation("uploader", fields: [uploaderId], references: [id])
+  uploaderId    String
+  reviews       Review[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([programId, criterionId, status])
+  @@index([uploaderId])
+}
+
+model Review {
+  id            String         @id @default(cuid())
+  document      Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId    String
+  reviewer      User           @relation("reviewer", fields: [reviewerId], references: [id])
+  reviewerId    String
+  status        ReviewStatus   @default(IN_REVIEW)
+  urgency       String         @default("med") // "high" | "med" | "low"
+  submittedAt   DateTime       @default(now())
+  resolvedAt    DateTime?
+  comments      Comment[]
+  notesCount    Int            @default(0)
+
+  @@index([reviewerId, status])
+}
+
+model Comment {
+  id            String        @id @default(cuid())
+  review        Review        @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reviewId      String
+  author        User          @relation(fields: [authorId], references: [id])
+  authorId      String
+  type          CommentType   @default(NOTE)
+  body          String
+  quote         String?       // kutipan dari dokumen
+  createdAt     DateTime      @default(now())
+
+  @@index([reviewId])
+}
+
+model LedDraft {
+  id            String      @id @default(cuid())
+  program       Program     @relation(fields: [programId], references: [id])
+  programId     String
+  criterion     Criterion   @relation(fields: [criterionId], references: [id])
+  criterionId   String
+  subIndex      Int         // 1, 2, 3 — subkriteria
+  content       String      @db.Text
+  lastEditor    User        @relation(fields: [lastEditorId], references: [id])
+  lastEditorId  String
+  updatedAt     DateTime    @updatedAt
+  createdAt     DateTime    @default(now())
+  wordCount     Int         @default(0)
+
+  @@unique([programId, criterionId, subIndex])
+  @@index([programId, criterionId])
+}
+
+model Deadline {
+  id            String      @id @default(cuid())
+  program       Program     @relation(fields: [programId], references: [id])
+  programId     String
+  criterion     Criterion?  @relation(fields: [criterionId], references: [id])
+  criterionId   String?
+  title         String
+  due           DateTime
+  assignedTo    String?     // user fullname atau role
+  completed     Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+
+  @@index([programId, due])
+}
+
+model Activity {
+  id            String        @id @default(cuid())
+  program       Program       @relation(fields: [programId], references: [id])
+  programId     String
+  user          User          @relation(fields: [userId], references: [id])
+  userId        String
+  type          ActivityType
+  description   String        // "mengunggah", "menyetujui", ...
+  target        String        // doc name, kriteria id, dll
+  metadata      Json?         // detail tambahan
+  createdAt     DateTime      @default(now())
+
+  @@index([programId, createdAt])
+  @@index([userId])
+}
