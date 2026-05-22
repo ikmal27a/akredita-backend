@@ -39,6 +39,7 @@ app.use(limiter);
 
 // Public routes
 app.get('/', (req, res) => res.json({ ok: true, name: 'akredita-api', message: 'Server is running' }));
+app.get('/health', (req, res) => res.json({ ok: true, name: 'akredita-api' }));
 app.use('/auth', authRouter);
 
 // Protected routes — require JWT
