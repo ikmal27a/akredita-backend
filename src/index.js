@@ -38,7 +38,7 @@ const limiter = rateLimit({
 app.use(limiter);
 
 // Public routes
-app.get('/health', (req, res) => res.json({ ok: true, name: 'akredita-api' }));
+app.get('/', (req, res) => res.json({ ok: true, name: 'akredita-api', message: 'Server is running' }));
 app.use('/auth', authRouter);
 
 // Protected routes — require JWT
