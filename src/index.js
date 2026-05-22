@@ -4,6 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
+import seedRouter from './routes/seed.js';
 
 import authRouter from './routes/auth.js';
 import documentsRouter from './routes/documents.js';
@@ -50,6 +51,7 @@ app.use('/led',        authMiddleware, ledRouter);
 app.use('/activity',   authMiddleware, activityRouter);
 app.use('/ai',         authMiddleware, aiRouter);
 app.use('/reports',    authMiddleware, reportsRouter);
+app.use('/seed', seedRouter);
 
 // Static file serving for uploaded docs (gated by ?token=)
 app.use('/files', authMiddleware, express.static(process.env.UPLOAD_DIR || './uploads'));
